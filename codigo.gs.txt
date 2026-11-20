@@ -1,0 +1,758 @@
+const CONFIG = {
+  sheets: {
+    rentals: 'Alquileres',
+    entries: 'Entradas',
+    drinks: 'Bebidas',
+    sales: 'Ventas',
+    products: 'Productos',
+    users: 'UsuariosApp'
+  },
+  canoeRates: { low: 20000, high: 40000 },
+  touristRate: 20000,
+  particularRate: 10000,
+  vehicleRate: 30000,
+  drinks: ['Gaseosa', 'Cerveza'],
+  meals: ['Desayuno', 'Almuerzo', 'Cena'],
+  mealRate: 25000,
+  sessionSeconds: 21600
+};
+
+function doGet() {
+  setupDatabase_();
+  return HtmlService.createTemplateFromFile('index').evaluate()
+    .setTitle('Finca Macoya')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function include(file) {
+  return HtmlService.createHtmlOutputFromFile(file).getContent();
+}
+
+function setupDatabase_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) throw new Error('Vincula este proyecto de Apps Script a una hoja de cálculo.');
+
+  ensureSheet_(ss, CONFIG.sheets.rentals, ['Fecha', 'Canoa', 'Días', 'Tarifa diaria', 'Total', 'Registrado']);
+  ensureEntriesSheet_(ss);
+  ensureSheet_(ss, CONFIG.sheets.drinks, ['Producto', 'Existencia inicial', 'Unidades compradas', 'Costo unitario', 'Precio de venta', 'Actualizado']);
+  ensureSheet_(ss, CONFIG.sheets.sales, ['Fecha', 'Producto', 'Unidades', 'Precio unitario', 'Costo unitario', 'Total venta', 'Costo', 'Ganancia', 'Registrado']);
+  ensureSheet_(ss, CONFIG.sheets.products, ['ID', 'Nombre', 'Categoria', 'Precio_Compra', 'Precio_Venta', 'Stock_Minimo', 'Estado']);
+  ensureUserSheet_(ss);
+
+  const drinkSheet = ss.getSheetByName(CONFIG.sheets.drinks);
+  CONFIG.drinks.forEach(name => {
+    const lastRow = drinkSheet.getLastRow();
+    const names = lastRow >= 2
+      ? drinkSheet.getRange(2, 1, lastRow - 1, 1).getValues().flat()
+      : [];
+
+    if (!names.includes(name)) {
+      drinkSheet.appendRow([name, 0, 0, 0, 0, new Date()]);
+    }
+  });
+
+  syncProductCatalog_();
+}
+
+function ensureSheet_(ss, name, headers) {
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) sheet = ss.insertSheet(name);
+  if (sheet.getLastRow() === 0) sheet.appendRow(headers);
+
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, headers.length)
+    .setFontWeight('bold')
+    .setBackground('#e8f2ec');
+}
+
+function ensureEntriesSheet_(ss) {
+  let sheet = ss.getSheetByName(CONFIG.sheets.entries);
+  const headers = [
+    'Fecha',
+    'Turistas',
+    'Vehículos',
+    'Valor turistas',
+    'Valor vehículos',
+    'Total',
+    'Registrado',
+    'Particulares',
+    'Valor particulares',
+    'Tipo persona'
+  ];
+
+  if (!sheet) sheet = ss.insertSheet(CONFIG.sheets.entries);
+
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+  } else {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
+
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, headers.length)
+    .setFontWeight('bold')
+    .setBackground('#e8f2ec');
+}
+
+function ensureUserSheet_(ss) {
+  let sheet = ss.getSheetByName(CONFIG.sheets.users);
+  const headers = [
+    'ID',
+    'Usuario',
+    'Hash_Clave',
+    'Salt',
+    'Rol',
+    'Estado',
+    'Creado',
+    'Autorizado_Por',
+    'Fecha_Autorizacion'
+  ];
+
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.sheets.users);
+    sheet.appendRow(headers);
+  } else if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+  } else {
+    const current = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const hasRoleColumns = current.includes('Rol') && current.includes('Estado');
+
+    if (!hasRoleColumns) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      const count = sheet.getLastRow() - 1;
+
+      if (count > 0) {
+        const rows = sheet.getRange(2, 1, count, headers.length).getValues();
+
+        rows.forEach((row, index) => {
+          const created = row[4] || new Date();
+          row[4] = index === 0 ? 'Administrador' : 'Encargado';
+          row[5] = index === 0 ? 'Activo' : 'Pendiente';
+          row[6] = created;
+          row[7] = index === 0 ? 'Sistema' : '';
+          row[8] = index === 0 ? (row[6] || new Date()) : '';
+        });
+
+        sheet.getRange(2, 1, count, headers.length).setValues(rows);
+      }
+    } else {
+      const count = sheet.getLastRow() - 1;
+
+      if (count > 0) {
+        const roleRange = sheet.getRange(2, 5, count, 1);
+        const roles = roleRange.getValues();
+        let changed = false;
+
+        roles.forEach(row => {
+          if (row[0] === 'Usuario') {
+            row[0] = 'Encargado';
+            changed = true;
+          }
+        });
+
+        if (changed) roleRange.setValues(roles);
+      }
+    }
+  }
+
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, headers.length)
+    .setFontWeight('bold')
+    .setBackground('#e8f2ec');
+}
+
+function syncProductCatalog_() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.sheets.products);
+  const existing = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues()
+    : [];
+  const names = existing.map(row => String(row[1] || ''));
+  const drinkRows = rows_(CONFIG.sheets.drinks);
+  const products = [];
+
+  for (let canoe = 1; canoe <= 10; canoe++) {
+    products.push([
+      'CAN-' + String(canoe).padStart(2, '0'),
+      'Canoa ' + canoe,
+      'Alquiler',
+      0,
+      canoe <= 3 ? CONFIG.canoeRates.low : CONFIG.canoeRates.high,
+      0,
+      'Activo'
+    ]);
+  }
+
+  CONFIG.drinks.forEach((name, index) => {
+    const row = drinkRows.find(item => item[0] === name) || [];
+    products.push([
+      'BEB-' + (index + 1),
+      name,
+      'Bebida',
+      Number(row[3] || 0),
+      Number(row[4] || 0),
+      0,
+      'Activo'
+    ]);
+  });
+
+  CONFIG.meals.forEach((name, index) => {
+    products.push([
+      'COM-' + (index + 1),
+      name,
+      'Comida',
+      0,
+      CONFIG.mealRate,
+      0,
+      'Activo'
+    ]);
+  });
+
+  products.push(
+    ['ENT-01', 'Entrada turista', 'Entrada', 0, CONFIG.touristRate, 0, 'Activo'],
+    ['ENT-03', 'Entrada particular', 'Entrada', 0, CONFIG.particularRate, 0, 'Activo'],
+    ['ENT-02', 'Ingreso vehículo', 'Entrada', 0, CONFIG.vehicleRate, 0, 'Activo']
+  );
+
+  const missing = products.filter(row => !names.includes(row[1]));
+
+  products.forEach(product => {
+    const existingIndex = names.indexOf(product[1]);
+    if (existingIndex >= 0) {
+      sheet.getRange(existingIndex + 2, 5).setValue(product[4]);
+    }
+  });
+
+  if (missing.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, missing.length, 7).setValues(missing);
+  }
+}
+
+function getAuthStatus() {
+  setupDatabase_();
+  const users = getUserSheet_();
+  const userCount = Math.max(0, users.getLastRow() - 1);
+
+  return {
+    needsRegistration: userCount === 0,
+    canRequestAccess: userCount > 0
+  };
+}
+
+function registerUser(data) {
+  setupDatabase_();
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    const sheet = getUserSheet_();
+    const username = normalizeUsername_(data.username);
+    const password = String(data.password || '');
+    const confirmation = String(data.confirmPassword || '');
+
+    validateCredentials_(username, password);
+    if (password !== confirmation) throw new Error('Las contraseñas no coinciden.');
+
+    const existing = sheet.getLastRow() > 1
+      ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues()
+      : [];
+
+    if (existing.some(row => String(row[1]).toLowerCase() === username.toLowerCase())) {
+      throw new Error('Ese nombre de usuario ya está ocupado.');
+    }
+
+    const salt = Utilities.getUuid();
+    const isFirst = existing.length === 0;
+
+    sheet.appendRow([
+      Utilities.getUuid(),
+      username,
+      passwordHash_(password, salt),
+      salt,
+      isFirst ? 'Administrador' : 'Encargado',
+      isFirst ? 'Activo' : 'Pendiente',
+      new Date(),
+      isFirst ? 'Sistema' : '',
+      isFirst ? new Date() : ''
+    ]);
+
+    return {
+      registered: true,
+      username,
+      pending: !isFirst
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function login(data) {
+  setupDatabase_();
+
+  const username = normalizeUsername_(data.username);
+  const password = String(data.password || '');
+  const sheet = getUserSheet_();
+
+  if (sheet.getLastRow() < 2) {
+    throw new Error('Primero debes crear la cuenta inicial.');
+  }
+
+  const users = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+  const user = users.find(row => String(row[1]).toLowerCase() === username.toLowerCase());
+
+  if (!user || passwordHash_(password, String(user[3])) !== String(user[2])) {
+    throw new Error('Usuario o contraseña incorrectos.');
+  }
+
+  if (user[5] === 'Pendiente') {
+    throw new Error('Tu cuenta está pendiente de aprobación por un administrador.');
+  }
+
+  if (user[5] !== 'Activo') {
+    throw new Error('Tu cuenta está suspendida. Contacta a un administrador.');
+  }
+
+  return createSession_(String(user[1]), String(user[4] || 'Encargado'));
+}
+
+function validateSession(token) {
+  const user = requireAuth_(token);
+  return {
+    username: user.username,
+    role: user.role
+  };
+}
+
+function logout(token) {
+  if (token) CacheService.getScriptCache().remove('macoya-session-' + token);
+  return true;
+}
+
+function getUserSheet_() {
+  return SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.sheets.users);
+}
+
+function getUsers(token) {
+  requireAdmin_(token);
+  const sheet = getUserSheet_();
+
+  if (sheet.getLastRow() < 2) return [];
+
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues().map(row => ({
+    id: String(row[0]),
+    username: String(row[1]),
+    role: String(row[4] || 'Encargado'),
+    status: String(row[5] || 'Pendiente'),
+    created: row[6] instanceof Date
+      ? Utilities.formatDate(row[6], Session.getScriptTimeZone(), 'yyyy-MM-dd')
+      : String(row[6] || '')
+  }));
+}
+
+function approveUser(userId, token) {
+  const admin = requireAdmin_(token);
+  const sheet = getUserSheet_();
+  const rows = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues()
+    : [];
+  const index = rows.findIndex(row => String(row[0]) === String(userId));
+
+  if (index < 0) throw new Error('No se encontró esa cuenta.');
+  if (rows[index][5] !== 'Pendiente') throw new Error('Esa cuenta ya no está pendiente.');
+
+  sheet.getRange(index + 2, 6, 1, 4).setValues([[
+    'Activo',
+    rows[index][6],
+    admin.username,
+    new Date()
+  ]]);
+
+  return { ok: true };
+}
+
+function setUserStatus(userId, status, token) {
+  const admin = requireAdmin_(token);
+
+  if (!['Activo', 'Suspendido'].includes(status)) {
+    throw new Error('Estado no permitido.');
+  }
+
+  const sheet = getUserSheet_();
+  const rows = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues()
+    : [];
+  const index = rows.findIndex(row => String(row[0]) === String(userId));
+
+  if (index < 0) throw new Error('No se encontró esa cuenta.');
+  if (String(rows[index][1]) === admin.username) {
+    throw new Error('No puedes suspender tu propia cuenta.');
+  }
+
+  sheet.getRange(index + 2, 6).setValue(status);
+  return { ok: true };
+}
+
+function normalizeUsername_(value) {
+  const username = String(value || '').trim();
+
+  if (!/^[a-zA-Z0-9._-]{3,30}$/.test(username)) {
+    throw new Error('El usuario debe tener entre 3 y 30 caracteres; usa letras, números, punto, guion o guion bajo.');
+  }
+
+  return username;
+}
+
+function validateCredentials_(username, password) {
+  if (!username) throw new Error('Escribe un nombre de usuario válido.');
+  if (password.length < 8) throw new Error('La contraseña debe tener al menos 8 caracteres.');
+}
+
+function passwordHash_(password, salt) {
+  const digest = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    salt + ':' + password,
+    Utilities.Charset.UTF_8
+  );
+
+  return Utilities.base64Encode(digest);
+}
+
+function createSession_(username, role) {
+  const token = Utilities.getUuid() + Utilities.getUuid();
+
+  CacheService.getScriptCache().put(
+    'macoya-session-' + token,
+    username,
+    CONFIG.sessionSeconds
+  );
+
+  return {
+    token,
+    username,
+    role
+  };
+}
+
+function requireAuth_(token) {
+  if (!token) throw new Error('Tu sesión terminó. Inicia sesión otra vez.');
+
+  const username = CacheService.getScriptCache().get('macoya-session-' + token);
+  if (!username) throw new Error('Tu sesión terminó. Inicia sesión otra vez.');
+
+  const sheet = getUserSheet_();
+  const users = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues()
+    : [];
+  const row = users.find(item => String(item[1]) === username);
+
+  if (!row || row[5] !== 'Activo') {
+    CacheService.getScriptCache().remove('macoya-session-' + token);
+    throw new Error('Tu cuenta ya no tiene acceso. Inicia sesión otra vez.');
+  }
+
+  return {
+    id: String(row[0]),
+    username: String(row[1]),
+    role: String(row[4])
+  };
+}
+
+function requireAdmin_(token) {
+  const user = requireAuth_(token);
+
+  if (user.role !== 'Administrador') {
+    throw new Error('Esta acción está reservada para administradores.');
+  }
+
+  return user;
+}
+
+function requireSeller_(token) {
+  const user = requireAuth_(token);
+
+  if (!['Administrador', 'Encargado'].includes(user.role)) {
+    throw new Error('Esta acción está reservada para administradores y encargados.');
+  }
+
+  return user;
+}
+
+function getDashboard(from, to, token) {
+  requireAuth_(token);
+  setupDatabase_();
+
+  const start = from ? new Date(from + 'T00:00:00') : new Date(0);
+  const end = to ? new Date(to + 'T23:59:59') : new Date('9999-12-31T23:59:59');
+
+  const rentals = rows_(CONFIG.sheets.rentals).filter(row => inRange_(row[0], start, end));
+  const entries = rows_(CONFIG.sheets.entries).filter(row => inRange_(row[0], start, end));
+  const sales = rows_(CONFIG.sheets.sales).filter(row => inRange_(row[0], start, end));
+
+  const productBreakdown = [...CONFIG.drinks, ...CONFIG.meals].map(name => {
+    const productSales = sales.filter(row => row[1] === name);
+
+    return {
+      name,
+      units: productSales.reduce((total, row) => total + Number(row[2] || 0), 0),
+      total: sum_(productSales, 5),
+      cost: sum_(productSales, 6),
+      profit: sum_(productSales, 7)
+    };
+  });
+
+  const beverageSales = sales.filter(row => CONFIG.drinks.includes(row[1]));
+  const mealSales = sales.filter(row => CONFIG.meals.includes(row[1]));
+  const beverageProfit = sum_(beverageSales, 7);
+
+  const sodaUnits = sales
+    .filter(row => row[1] === 'Gaseosa')
+    .reduce((total, row) => total + Number(row[2] || 0), 0);
+
+  const beerUnits = sales
+    .filter(row => row[1] === 'Cerveza')
+    .reduce((total, row) => total + Number(row[2] || 0), 0);
+
+  const mealCounts = CONFIG.meals.map(name => ({
+    name,
+    units: mealSales
+      .filter(row => row[1] === name)
+      .reduce((total, row) => total + Number(row[2] || 0), 0)
+  }));
+
+  const drinks = rows_(CONFIG.sheets.drinks);
+  const allSales = rows_(CONFIG.sheets.sales);
+
+  const inventory = CONFIG.drinks.map(name => {
+    const row = drinks.find(item => item[0] === name) || [name, 0, 0, 0, 0];
+    const sold = allSales
+      .filter(sale => sale[1] === name)
+      .reduce((total, sale) => total + Number(sale[2] || 0), 0);
+
+    return {
+      name,
+      initial: Number(row[1] || 0),
+      purchased: Number(row[2] || 0),
+      sold,
+      stock: Number(row[1] || 0) + Number(row[2] || 0) - sold
+    };
+  });
+
+  const rentalTotal = sum_(rentals, 4);
+  const entryTotal = sum_(entries, 5);
+  const mealTotal = sum_(mealSales, 5);
+  const salesTotal = sum_(sales, 5);
+
+  return {
+    stats: {
+      rentalCount: rentals.length,
+      rentalTotal,
+      entryTourists: sum_(entries, 1),
+      entryParticulars: sum_(entries, 7),
+      entryVehicles: sum_(entries, 2),
+      entryTotal,
+      salesTotal,
+      beverageProfit,
+      profit: rentalTotal + entryTotal + mealTotal + beverageProfit,
+      beverageTotal: sum_(beverageSales, 5),
+      mealTotal,
+      touristTotal: sum_(entries, 3),
+      particularTotal: sum_(entries, 8),
+      vehicleTotal: sum_(entries, 4),
+      sodaUnits,
+      beerUnits,
+      mealCounts,
+      chart: [
+        { label: 'Canoas', value: rentalTotal },
+        { label: 'Entradas', value: entryTotal },
+        { label: 'Bebidas', value: sum_(beverageSales, 5) },
+        { label: 'Comidas', value: mealTotal }
+      ],
+      productBreakdown,
+      total: rentalTotal + entryTotal + salesTotal
+    },
+    inventory
+  };
+}
+
+function registerRental(data, token) {
+  requireSeller_(token);
+  setupDatabase_();
+
+  const canoe = Number(data.canoe);
+  const days = Number(data.days);
+  const date = validDate_(data.date);
+
+  if (canoe < 1 || canoe > 10 || !Number.isInteger(canoe)) {
+    throw new Error('Selecciona una canoa del 1 al 10.');
+  }
+
+  if (days < 1 || !Number.isInteger(days)) {
+    throw new Error('Los días deben ser un número entero mayor que cero.');
+  }
+
+  const rate = canoe <= 3 ? CONFIG.canoeRates.low : CONFIG.canoeRates.high;
+  const total = rate * days;
+
+  SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName(CONFIG.sheets.rentals)
+    .appendRow([date, canoe, days, rate, total, new Date()]);
+
+  return { total };
+}
+
+function registerEntry(data, token) {
+  requireSeller_(token);
+  setupDatabase_();
+
+  const personType = String(data.personType || 'Turista');
+  const people = Number(data.people ?? data.tourists ?? 0);
+  const vehicles = Number(data.vehicles || 0);
+  const date = validDate_(data.date);
+
+  if (!['Turista', 'Particular'].includes(personType)) {
+    throw new Error('Selecciona si las personas son turistas o particulares.');
+  }
+
+  if (
+    people < 0 ||
+    vehicles < 0 ||
+    !Number.isInteger(people) ||
+    !Number.isInteger(vehicles) ||
+    people + vehicles === 0
+  ) {
+    throw new Error('Ingresa al menos una persona o vehículo, usando cantidades enteras.');
+  }
+
+  const tourists = personType === 'Turista' ? people : 0;
+  const particulars = personType === 'Particular' ? people : 0;
+  const touristTotal = tourists * CONFIG.touristRate;
+  const particularTotal = particulars * CONFIG.particularRate;
+  const vehicleTotal = vehicles * CONFIG.vehicleRate;
+
+  SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName(CONFIG.sheets.entries)
+    .appendRow([
+      date,
+      tourists,
+      vehicles,
+      touristTotal,
+      vehicleTotal,
+      touristTotal + particularTotal + vehicleTotal,
+      new Date(),
+      particulars,
+      particularTotal,
+      personType
+    ]);
+
+  return {
+    total: touristTotal + particularTotal + vehicleTotal
+  };
+}
+
+function updateInventory(data, token) {
+  requireAdmin_(token);
+  setupDatabase_();
+
+  const name = String(data.product);
+  const purchased = Number(data.purchased || 0);
+  const initial = Number(data.initial || 0);
+  const cost = Number(data.cost || 0);
+  const price = Number(data.price || 0);
+
+  if (
+    !CONFIG.drinks.includes(name) ||
+    [purchased, initial, cost, price].some(value => !Number.isFinite(value) || value < 0)
+  ) {
+    throw new Error('Revisa producto, cantidades y precios.');
+  }
+
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.sheets.drinks);
+  const values = sheet.getDataRange().getValues();
+  const row = values.findIndex((item, index) => index > 0 && item[0] === name) + 1;
+
+  if (!row) {
+    sheet.appendRow([name, initial, purchased, cost, price, new Date()]);
+  } else {
+    const old = sheet.getRange(row, 2, 1, 4).getValues()[0];
+    sheet.getRange(row, 2, 1, 5).setValues([[
+      Number(old[0] || 0) + initial,
+      Number(old[1] || 0) + purchased,
+      cost || old[2],
+      price || old[3],
+      new Date()
+    ]]);
+  }
+
+  return { ok: true };
+}
+
+function registerSale(data, token) {
+  requireSeller_(token);
+  setupDatabase_();
+
+  const name = String(data.product);
+  const units = Number(data.units);
+  const date = validDate_(data.date);
+
+  if (![...CONFIG.drinks, ...CONFIG.meals].includes(name) || units < 1 || !Number.isInteger(units)) {
+    throw new Error('Selecciona un producto y una cantidad entera mayor que cero.');
+  }
+
+  if (CONFIG.meals.includes(name)) {
+    const total = units * CONFIG.mealRate;
+
+    SpreadsheetApp.getActiveSpreadsheet()
+      .getSheetByName(CONFIG.sheets.sales)
+      .appendRow([date, name, units, CONFIG.mealRate, 0, total, 0, total, new Date()]);
+
+    return { total, profit: total };
+  }
+
+  const drinkSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.sheets.drinks);
+  const rowIndex = drinkSheet.getDataRange().getValues()
+    .findIndex((row, index) => index > 0 && row[0] === name);
+
+  if (rowIndex < 1) throw new Error('Configura primero el inventario del producto.');
+
+  const drink = drinkSheet.getRange(rowIndex + 1, 2, 1, 4).getValues()[0];
+  const sold = rows_(CONFIG.sheets.sales)
+    .filter(row => row[1] === name)
+    .reduce((total, row) => total + Number(row[2] || 0), 0);
+  const available = Number(drink[0] || 0) + Number(drink[1] || 0) - sold;
+
+  if (units > available) {
+    throw new Error('No hay suficientes unidades. Disponibles: ' + available + '.');
+  }
+
+  const cost = Number(drink[2] || 0);
+  const price = Number(drink[3] || 0);
+  const total = units * price;
+  const totalCost = units * cost;
+  const profit = total - totalCost;
+
+  SpreadsheetApp.getActiveSpreadsheet()
+    .getSheetByName(CONFIG.sheets.sales)
+    .appendRow([date, name, units, price, cost, total, totalCost, profit, new Date()]);
+
+  return { total, profit };
+}
+
+function rows_(sheetName) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+}
+
+function inRange_(value, start, end) {
+  const date = value instanceof Date ? value : new Date(value);
+  return !isNaN(date) && date >= start && date <= end;
+}
+
+function sum_(rows, columnIndex) {
+  return rows.reduce((total, row) => total + Number(row[columnIndex] || 0), 0);
+}
+
+function validDate_(value) {
+  const date = value ? new Date(value + 'T12:00:00') : new Date();
+  if (isNaN(date)) throw new Error('La fecha no es válida.');
+  return date;
+}

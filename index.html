@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
+  <title>Finca Macoya · Sistema de Gestión</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <section id="authScreen" class="auth-screen">
+    <button class="theme-toggle auth-theme" type="button" data-theme-toggle aria-label="Cambiar tema">
+        <i data-lucide="moon"></i><span>Tema</span>
+      </button>
+
+    <div class="auth-card glass-card">
+      <div class="brand-mark"><span class="brand-icon"><i data-lucide="waves"></i></span><span>MACOYA</span></div>
+      <div class="auth-heading">
+        <p class="eyebrow">FINCA · CONTROL</p>
+        <h1 id="authTitle">Bienvenido</h1>
+        <p id="authDescription">Inicia sesión para continuar.</p>
+      </div>
+
+      <form id="registerForm" class="auth-form" hidden>
+        <label class="input-label" for="registerUsername">Crea tu usuario</label>
+        <div class="input-wrap"><i data-lucide="user-round"></i><input id="registerUsername" name="username" autocomplete="username" placeholder="Tu usuario" minlength="3" maxlength="30" required>
+        </div>
+        <label class="input-label" for="registerPassword">Crea una contraseña</label>
+        <div class="input-wrap">
+          <i data-lucide="lock-keyhole"></i><input id="registerPassword" name="password" type="password" autocomplete="new-password" placeholder="Mínimo 8 caracteres" minlength="8" required><button class="eye-button" type="button" data-password-toggle="registerPassword" aria-label="Mostrar contraseña"><i data-lucide="eye"></i></button>
+        </div>
+        <label class="input-label" for="confirmPassword">Confirma la contraseña</label>
+        <div class="input-wrap">
+          <i data-lucide="shield-check"></i><input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" placeholder="Escríbela otra vez" minlength="8" required><button class="eye-button" type="button" data-password-toggle="confirmPassword" aria-label="Mostrar contraseña"><i data-lucide="eye"></i></button>
+        </div>
+        <button class="primary-button" type="submit"><span>Crear cuenta</span><i data-lucide="arrow-right"></i></button>
+        <p class="auth-note">
+          <i data-lucide="shield"></i><span id="registerNote">La primera cuenta será administradora. Las siguientes solicitarán acceso como encargados.</span>
+        </p>
+      </form>
+
+      <form id="loginForm" class="auth-form" hidden>
+        <label class="input-label" for="loginUsername">Usuario</label>
+        <div class="input-wrap"><i data-lucide="user-round"></i><input id="loginUsername" name="username" autocomplete="username" placeholder="Tu usuario" required>
+        </div>
+        <label class="input-label" for="loginPassword">Contraseña</label>
+        <div class="input-wrap">
+          <i data-lucide="lock-keyhole"></i><input id="loginPassword" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required><button class="eye-button" type="button" data-password-toggle="loginPassword" aria-label="Mostrar contraseña"><i data-lucide="eye"></i></button>
+        </div>
+        <button class="primary-button" type="submit"><span>Iniciar sesión</span><i data-lucide="arrow-right"></i></button>
+        <button id="requestAccessButton" class="text-button" type="button" hidden>¿No tienes cuenta? Solicita acceso</button>
+      </form>
+
+      <div id="authMessage" class="notice" role="status"></div>
+      <div class="auth-footer">Tu espacio de trabajo en <strong>Finca Macoya</strong></div>
+    </div>
+  </section>
+
+  <main id="appShell" class="app-shell" hidden>
+    <header class="topbar glass-card">
+      <a class="brand-mark app-brand"
+        href="#inicio"><span class="brand-icon"><i data-lucide="waves"></i></span><span>MACOYA</span></a>
+      <div class="top-actions">
+        <span class="user-chip"><i data-lucide="user-round"></i><span id="activeUsername">Usuario</span><small id="activeRole">Usuario</small></span>
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Cambiar tema"><i data-lucide="moon"></i><span>Tema</span></button>
+        <button id="logoutButton" class="icon-button logout-button" type="button" aria-label="Cerrar sesión"><i data-lucide="log-out"></i><span>Salir</span></button>
+      </div>
+    </header>
+
+    <div class="app-heading">
+      <div>
+        <p class="eyebrow">TU FINCA, EN UN SOLO LUGAR</p>
+        <h1>Finca Macoya</h1>
+        <p class="sub">Panel de administración y control</p>
+      </div>
+      <span class="date-pill"><i data-lucide="sparkles"></i> Hola, <strong id="helloUsername">usuario</strong></span>
+    </div>
+
+    <nav class="nav glass-card" aria-label="Secciones de la aplicación">
+      <button class="active" data-page="inicio"><i data-lucide="layout-dashboard"></i> Inicio</button>
+      <button class="seller-only" data-page="alquiler" hidden><i data-lucide="ship"></i> Alquiler de canoa</button>
+      <button class="seller-only" data-page="entrada" hidden><i data-lucide="ticket-check"></i> Entradas</button>
+      <button class="admin-only" data-page="inventario" hidden><i data-lucide="package-plus"></i> Inventario</button>
+      <button class="seller-only" data-page="venta" hidden><i data-lucide="shopping-bag"></i> Ventas</button>
+      <button class="seller-only" data-page="existencias" hidden><i data-lucide="boxes"></i> Existencias</button>
+      <button data-page="usuarios" class="admin-only" hidden><i data-lucide="users"></i> Usuarios</button>
+    </nav>
+
+    <section class="page active" id="page-inicio">
+      <div class="glass-card filter-panel">
+        <div>
+          <h2>Resumen de Macoya</h2>
+          <p class="hint">Filtra los resultados por fecha.</p>
+        </div>
+        <div class="filters">
+          <label class="date-field"><span>Desde</span><input id="from" type="date"></label>
+          <label class="date-field"><span>Hasta</span><input id="to" type="date"></label>
+          <button class="soft-button" onclick="refresh()">Aplicar</button>
+          <button class="soft-button" onclick="period('today')">Hoy</button>
+          <button class="soft-button" onclick="period('week')">7 días</button>
+          <button class="soft-button" onclick="period('month')">Este mes</button>
+        </div>
+      </div>
+
+      <section class="total-card glass-card">
+        <div>
+          <div class="total-kicker"><i data-lucide="chart-no-axes-combined"></i> RESUMEN DE MACOYA</div>
+          <div class="total-label">Ingresos totales del periodo</div>
+          <strong id="total">$0</strong>
+          <div class="total-detail">Canoas · Entradas · Bebidas · Comidas</div>
+        </div>
+        <div class="total-orb"><i data-lucide="wallet-cards"></i></div>
+      </section>
+
+      <div class="grid">
+        <article class="metric-card card-canoes">
+          <div class="metric-top"><span>Alquiler de canoas</span><i data-lucide="ship"></i></div>
+          <strong id="rentTotal">$0</strong>
+          <div class="card-detail" id="canoeDetail">0 alquileres de canoa</div>
+        </article>
+
+        <article class="metric-card card-entrance">
+          <div class="metric-top"><span>Entradas a la finca</span><i data-lucide="ticket-check"></i></div>
+          <strong id="entryTotal">$0</strong>
+          <div class="card-detail" id="entryDetail">Turistas · particulares · vehículos</div>
+        </article>
+
+        <article class="metric-card card-drinks">
+          <div class="metric-top"><span>Ventas de bebidas</span><i data-lucide="cup-soda"></i></div>
+          <strong id="drinkTotal">$0</strong>
+          <div class="card-detail" id="drinkDetail">Cervezas: 0 · Gaseosas: 0</div>
+          <div class="card-detail detail-emphasis" id="drinkProfit">Ganancia real: $0</div>
+        </article>
+
+        <article class="metric-card card-meals">
+          <div class="metric-top"><span>Ventas de comidas</span><i data-lucide="utensils"></i></div>
+          <strong id="mealTotal">$0</strong>
+          <div class="card-detail" id="mealDetail">Desayunos: 0 · Almuerzos: 0 · Cenas: 0</div>
+        </article>
+
+        <article class="metric-card card-tourists">
+          <div class="metric-top"><span>Ingreso por personas</span><i data-lucide="users-round"></i></div>
+          <strong id="touristTotal">$0</strong>
+          <div class="card-detail" id="touristDetail">Turistas y particulares</div>
+        </article>
+
+        <article class="metric-card card-vehicles">
+          <div class="metric-top"><span>Ingreso por vehículos</span><i data-lucide="car-front"></i></div>
+          <strong id="vehicleTotal">$0</strong>
+          <div class="card-detail" id="vehicleDetail">0 vehículos registrados</div>
+        </article>
+
+        <article class="metric-card card-profit">
+          <div class="metric-top"><span>Ganancias registradas</span><i data-lucide="badge-dollar-sign"></i></div>
+          <strong id="profit">$0</strong>
+          <div class="card-detail">Canoas + entradas + comidas + ganancia de bebidas</div>
+        </article>
+      </div>
+
+      <section class="glass-card data-panel">
+        <div class="section-title">
+          <div>
+            <h2>Ingresos por categoría</h2>
+            <p class="hint">Comparación para el periodo seleccionado.</p>
+          </div>
+        </div>
+        <div id="chartRows"></div>
+      </section>
+
+      <section class="glass-card data-panel">
+        <div class="section-title">
+          <div>
+            <h2>Ganancias por producto vendido</h2>
+            <p class="hint">Ingresos, costos y ganancia en el periodo.</p>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Unidades</th>
+                <th>Ingresos</th>
+                <th>Costos</th>
+                <th>Ganancia</th>
+              </tr>
+            </thead>
+            <tbody id="productSalesRows">
+              <tr>
+                <td colspan="5">Cargando…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div id="loadMsg" class="status"></div>
+    </section>
+
+    <section class="page" id="page-alquiler">
+      <div class="glass-card form-panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">REGISTRO</p>
+            <h2>Alquiler de canoa</h2>
+            <p class="hint">Canoas 1–3: $20.000/día. Canoas 4–10: $40.000/día.</p>
+          </div>
+          <span class="form-icon"><i data-lucide="ship"></i></span>
+        </div>
+        <form id="rentalForm" class="form-grid">
+          <label class="field"><span>Fecha</span><input name="date" type="date" required></label>
+          <label class="field">
+              <span>Canoa</span>
+              <select name="canoe" required>
+                <option value="1">Canoa 1 · $20.000/día</option>
+                <option value="2">Canoa 2 · $20.000/día</option>
+                <option value="3">Canoa 3 · $20.000/día</option>
+                <option value="4">Canoa 4 · $40.000/día</option>
+                <option value="5">Canoa 5 · $40.000/día</option>
+                <option value="6">Canoa 6 · $40.000/día</option>
+                <option value="7">Canoa 7 · $40.000/día</option>
+                <option value="8">Canoa 8 · $40.000/día</option>
+                <option value="9">Canoa 9 · $40.000/día</option>
+                <option value="10">Canoa 10 · $40.000/día</option>
+              </select>
+            </label>
+          <label class="field"><span>Días alquilados</span><input name="days" type="number" min="1" step="1" value="1" required></label>
+          <div class="field full">
+            <button class="primary-button">Guardar alquiler <i data-lucide="arrow-right"></i></button></div>
+          <div class="message full" id="rentalMsg"></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="page" id="page-entrada">
+      <div class="glass-card form-panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">REGISTRO</p>
+            <h2>Entrada a la finca</h2>
+            <p class="hint">Turista: $20.000 · Particular: $10.000 · Vehículo: $30.000.</p>
+          </div>
+          <span class="form-icon"><i data-lucide="ticket-check"></i></span>
+        </div>
+        <form id="entryForm" class="form-grid">
+          <label class="field"><span>Fecha</span><input name="date" type="date" required></label>
+          <label class="field">
+              <span>Tipo de persona</span>
+              <select name="personType" required>
+                <option value="Turista">Turista · $20.000</option>
+                <option value="Particular">Particular · $10.000</option>
+              </select>
+            </label>
+          <label class="field"><span>Número de personas</span><input name="people" type="number" min="0" step="1" value="0"></label>
+          <label class="field"><span>Número de vehículos</span><input name="vehicles" type="number" min="0" step="1" value="0"></label>
+          <div class="field full">
+            <button class="primary-button">Guardar entrada <i data-lucide="arrow-right"></i></button></div>
+          <div class="message full" id="entryMsg"></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="page" id="page-inventario">
+      <div class="glass-card form-panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">INVENTARIO</p>
+            <h2>Compra de bebidas</h2>
+            <p class="hint">Registra unidades, costo de compra y precio de venta.</p>
+          </div>
+          <span class="form-icon"><i data-lucide="package-plus"></i></span>
+        </div>
+        <form id="inventoryForm" class="form-grid">
+          <label class="field">
+              <span>Producto</span>
+              <select name="product"><option>Gaseosa</option><option>Cerveza</option></select>
+            </label>
+          <label class="field"><span>Unidades compradas ahora</span><input name="purchased" type="number" min="0" step="1" value="0"></label>
+          <label class="field"><span>Existencia inicial (primera carga)</span><input name="initial" type="number" min="0" step="1" value="0"></label>
+          <label class="field"><span>Costo por unidad</span><input name="cost" type="number" min="0" step="1" value="0"></label>
+          <label class="field"><span>Precio de venta por unidad</span><input name="price" type="number" min="0" step="1" value="0"></label>
+          <div class="field full">
+            <button class="primary-button">Guardar inventario <i data-lucide="arrow-right"></i></button></div>
+          <div class="message full" id="inventoryMsg"></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="page" id="page-venta">
+      <div class="glass-card form-panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">VENTAS</p>
+            <h2>Bebidas y comidas</h2>
+            <p class="hint">Comidas a $25.000 cada una. Las bebidas se descuentan del inventario.</p>
+          </div>
+          <span class="form-icon"><i data-lucide="shopping-bag"></i></span>
+        </div>
+        <form id="saleForm" class="form-grid">
+          <label class="field"><span>Fecha</span><input name="date" type="date" required></label>
+          <label class="field">
+              <span>Producto</span>
+              <select name="product">
+                <optgroup label="Bebidas"><option>Gaseosa</option><option>Cerveza</option></optgroup>
+                <optgroup label="Comidas"><option>Desayuno</option><option>Almuerzo</option><option>Cena</option></optgroup>
+              </select>
+            </label>
+          <label class="field"><span>Unidades vendidas</span><input name="units" type="number" min="1" step="1" value="1" required></label>
+          <div class="field full">
+            <button class="primary-button">Guardar venta <i data-lucide="arrow-right"></i></button></div>
+          <div class="message full" id="saleMsg"></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="page" id="page-existencias">
+      <div class="glass-card data-panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">INVENTARIO</p>
+            <h2>Existencias actuales</h2>
+            <p class="hint">Unidades iniciales, compradas, vendidas y disponibles.</p>
+          </div>
+          <span class="form-icon"><i data-lucide="boxes"></i></span>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Inicial</th>
+                <th>Compradas</th>
+                <th>Vendidas</th>
+                <th>Quedan</th>
+              </tr>
+            </thead>
+            <tbody id="inventoryRows">
+              <tr>
+                <td colspan="5">Cargando…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-usuarios">
+      <div class="glass-card data-panel">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">ADMINISTRACIÓN</p>
+            <h2>Usuarios y permisos</h2>
+            <p class="hint">Aprueba solicitudes o suspende el acceso.</p>
+          </div>
+          <span class="form-icon"><i data-lucide="users"></i></span>
+        </div>
+        <div class="table-scroll">
+          <table class="data-table users-table">
+            <thead>
+              <tr>
+                <th>Usuario</th>
+                <th>Rol</th>
+                <th>Estado</th>
+                <th>Creado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="usersRows">
+              <tr>
+                <td colspan="5">Cargando…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div id="usersMsg" class="status"></div>
+      </div>
+    </section>
+  </main>
+
+    <!-- Librería de Íconos Lucide -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Cliente Oficial Supabase JS v2 -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Configuración de Supabase -->
+  <script src="config.js?v=3"></script>
+  <!-- Lógica de la Aplicación -->
+  <script src="app.js?v=3"></script>
+</body>
+
+</html>
